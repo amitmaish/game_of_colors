@@ -1,23 +1,28 @@
 use image;
 
 fn main() {
-    let imgx = 5;
-    let imgy = 5;
+    let imgx = 12;
+    let imgy = 12;
 
-    let generations = 5;
+    let generations = 15;
 
     // Create a new ImgBuf with width: imgx and height: imgy
     let mut imgbuf = image::RgbImage::new(imgx, imgy);
 
+    
     // create initial generation as a blinker and save it
-    for x in 1..=3 {
-        imgbuf.put_pixel(x, 2, image::Rgb([255, 255, 255]))
+    for y in 1..=3 {
+        imgbuf.put_pixel(3, y, image::Rgb([255, 255, 255]));
     }
-    imgbuf.save("output/0001.png").unwrap();
+    imgbuf.put_pixel(2, 3, image::Rgb([255, 255, 255]));
+    imgbuf.put_pixel(1, 2, image::Rgb([255, 255, 255]));
+    
+
+    imgbuf.save("output/0000.png").unwrap();
 
     let mut lastgen = imgbuf;
 
-    for i in 0..generations {
+    for i in 1..generations {
         let mut genbuf = image::RgbImage::new(imgx, imgy);
 
         // insert game of life logic here
@@ -58,7 +63,7 @@ fn main() {
             }
         }
 
-        let _ = genbuf.save(format!("output/{:04}.png", i));
+        genbuf.save(format!("output/{:04}.png", i)).unwrap();
 
         lastgen = genbuf;
     }
