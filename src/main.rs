@@ -1,29 +1,71 @@
+use std::env;
+use std::path::Path;
+use rand::Rng;
 use image;
 
+struct Configuration<'a> {
+    imgx: u32,
+    imgy: u32,
+
+    generations: u32,
+
+    input: 'a Option<Path>,
+    output: String,
+}
+
 fn main() {
-    let imgx = 12;
-    let imgy = 12;
+    let mut config = Configuration {
+        imgx: 100,
+        imgy: 100,
+        generations: 100,
+        input: None,
+        output: String::from("output/"),
+    };
 
-    let generations = 15;
 
-    // Create a new ImgBuf with width: imgx and height: imgy
-    let mut imgbuf = image::RgbImage::new(imgx, imgy);
+    let mut args = env::args();
 
-    
-    // create initial generation as a blinker and save it
-    for y in 1..=3 {
-        imgbuf.put_pixel(3, y, image::Rgb([255, 255, 255]));
+    let _ = args.next(); // ignore first item
+
+    while let Some(arg) = args.next() {
+        match arg.trim() {
+        "-i" => config.input = Some(Path::new(&String::from(args.next().unwrap().trim()))),
+        "-o" => {config.output = String::from(args.next().unwrap().trim()); println!("output: {}", config.output);},
+        _ => panic!("Couldn't parse input"),
+        }
     }
-    imgbuf.put_pixel(2, 3, image::Rgb([255, 255, 255]));
-    imgbuf.put_pixel(1, 2, image::Rgb([255, 255, 255]));
     
+    let mut imgbuf = match config.input {
+        None => generate_random_gen(&config),
+        Some(input) => image::ImageReader::open(config.input).unwrap().decode().unwrap().into_rgb8(),
+    };
+    
+    // write inital generation
+    imgbuf.save(format!("{}0000.png", config.output)).unwrap();
 
-    imgbuf.save("output/0000.png").unwrap();
+    simulate_life(imgbuf, &config);
+}
 
+//fn read_input_gen(config: &Configuration) -> image::RgbImage {
+
+//}
+
+fn generate_random_gen(config: &Configuration) -> image::RgbImage {
+    let mut imgbuf = image::RgbImage::new(config.imgx, config.imgy);
+    
+    for (_, _, pixel) in imgbuf.enumerate_pixels_mut() {
+        let random_number = rand::thread_rng().gen_range(0..=1);
+        if random_number == 1 { *pixel = image::Rgb([255, 255, 255]); }
+    }
+
+    imgbuf
+}
+
+fn simulate_life(imgbuf: image::RgbImage, config: &Configuration) {
     let mut lastgen = imgbuf;
 
-    for i in 1..generations {
-        let mut genbuf = image::RgbImage::new(imgx, imgy);
+    for i in 1..config.generations {
+        let mut genbuf = image::RgbImage::new(config.imgx, config.imgy);
 
         // insert game of life logic here
         for (x, y, pixel) in genbuf.enumerate_pixels_mut() {
@@ -63,7 +105,7 @@ fn main() {
             }
         }
 
-        genbuf.save(format!("output/{:04}.png", i)).unwrap();
+        genbuf.save(format!("{}{:04}.png", config.output, i)).unwrap();
 
         lastgen = genbuf;
     }
