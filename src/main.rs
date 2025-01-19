@@ -1,7 +1,7 @@
+use image;
+use rand::Rng;
 use std::env;
 use std::path::Path;
-use rand::Rng;
-use image;
 
 struct Configuration<'a> {
     imgx: u32,
@@ -9,8 +9,8 @@ struct Configuration<'a> {
 
     generations: u32,
 
-    input: 'a Option<Path>,
-    output: String,
+    input_path: Option<&'a Path>,
+    output_path: String,
 }
 
 fn main() {
@@ -18,30 +18,52 @@ fn main() {
         imgx: 100,
         imgy: 100,
         generations: 100,
-        input: None,
-        output: String::from("output/"),
+        input_path: None,
+        output_path: String::from("output/"),
     };
-
 
     let mut args = env::args();
 
     let _ = args.next(); // ignore first item
 
+    let mut input_path_arg: Option<String> = None;
+
     while let Some(arg) = args.next() {
         match arg.trim() {
-        "-i" => config.input = Some(Path::new(&String::from(args.next().unwrap().trim()))),
-        "-o" => {config.output = String::from(args.next().unwrap().trim()); println!("output: {}", config.output);},
-        _ => panic!("Couldn't parse input"),
+            "-i" => {
+                input_path_arg = Some(args.next().unwrap());
+            }
+            "-o" => {
+                config.output_path = String::from(args.next().unwrap().trim());
+                println!("output: {}", config.output_path);
+            }
+            _ => panic!("Couldn't parse input"),
         }
     }
-    
-    let mut imgbuf = match config.input {
+
+    let input_path;
+
+    match input_path_arg {
+        None => config.input_path = None,
+        Some(path) => {
+            input_path = path;
+            config.input_path = Some(Path::new(&input_path));
+        }
+    }
+
+    let imgbuf = match config.input_path {
         None => generate_random_gen(&config),
-        Some(input) => image::ImageReader::open(config.input).unwrap().decode().unwrap().into_rgb8(),
+        Some(input_path) => image::ImageReader::open(input_path)
+            .unwrap()
+            .decode()
+            .unwrap()
+            .into_rgb8(),
     };
-    
+
     // write inital generation
-    imgbuf.save(format!("{}0000.png", config.output)).unwrap();
+    imgbuf
+        .save(format!("{}0000.png", config.output_path))
+        .unwrap();
 
     simulate_life(imgbuf, &config);
 }
@@ -52,10 +74,12 @@ fn main() {
 
 fn generate_random_gen(config: &Configuration) -> image::RgbImage {
     let mut imgbuf = image::RgbImage::new(config.imgx, config.imgy);
-    
+
     for (_, _, pixel) in imgbuf.enumerate_pixels_mut() {
         let random_number = rand::thread_rng().gen_range(0..=1);
-        if random_number == 1 { *pixel = image::Rgb([255, 255, 255]); }
+        if random_number == 1 {
+            *pixel = image::Rgb([255, 255, 255]);
+        }
     }
 
     imgbuf
@@ -105,7 +129,9 @@ fn simulate_life(imgbuf: image::RgbImage, config: &Configuration) {
             }
         }
 
-        genbuf.save(format!("{}{:04}.png", config.output, i)).unwrap();
+        genbuf
+            .save(format!("{}{:04}.png", config.output_path, i))
+            .unwrap();
 
         lastgen = genbuf;
     }
