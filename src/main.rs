@@ -11,6 +11,10 @@ struct Configuration<'a> {
 
     generations: u32,
 
+    clamp_min: f64,
+    clamp_max: f64,
+    threshold: f64,
+
     input_path: Option<&'a Path>,
     output_path: String,
 }
@@ -43,6 +47,22 @@ impl Pixel {
         ])
     }
 
+    fn threshold(&self, threshold: f64) -> Pixel {
+        if self.length() >= threshold {
+            Pixel::new(self.r, self.g, self.b)
+        } else {
+            Pixel::BLACK
+        }
+    }
+
+    fn clamp(&self, min: f64, max: f64) -> Pixel {
+        Pixel {
+            r: self.r.clamp(min, max),
+            g: self.g.clamp(min, max),
+            b: self.b.clamp(min, max),
+        }
+    }
+
     fn length(&self) -> f64 {
         let squared_length = (self.r * self.r) + (self.g * self.g) + (self.b * self.b);
         squared_length.sqrt()
@@ -72,7 +92,7 @@ impl Pixel {
         }
     }
 
-    const WHITE: Pixel = Pixel {
+    const _WHITE: Pixel = Pixel {
         r: 1.0,
         g: 1.0,
         b: 1.0,
@@ -148,6 +168,9 @@ fn main() {
         imgy: 100,
         generations: 100,
         input_path: None,
+        clamp_min: 0.0,
+        clamp_max: 1.0,
+        threshold: 0.0,
         output_path: String::from("output/"),
     }; // Set the default configuration
 
@@ -174,6 +197,16 @@ fn main() {
             "-g" => {
                 config.generations = String::from(args.next().unwrap().trim()).parse().unwrap();
             }
+            "-clamp_min" => {
+                config.clamp_min = String::from(args.next().unwrap().trim()).parse().unwrap();
+            }
+            "-clamp_max" => {
+                config.clamp_max = String::from(args.next().unwrap().trim()).parse().unwrap();
+            }
+            "-threshold" => {
+                config.threshold = String::from(args.next().unwrap().trim()).parse().unwrap();
+            }
+
             _ => panic!("Couldn't parse input"),
         }
     }
@@ -191,11 +224,17 @@ fn main() {
     let imgbuf = match config.input_path {
         None => generate_random_gen(&config),
         Some(input_path) => {
-            let buf = image::ImageReader::open(input_path)
+            let mut buf = image::ImageReader::open(input_path)
                 .unwrap()
                 .decode()
                 .unwrap()
                 .into_rgb8();
+            for (_x, _y, pixel) in buf.enumerate_pixels_mut() {
+                *pixel = Pixel::from_rgb8(pixel)
+                    .threshold(config.threshold)
+                    .clamp(config.clamp_min, config.clamp_max)
+                    .as_rgb8();
+            }
 
             config.imgx = buf.width();
             config.imgy = buf.height();
@@ -243,7 +282,10 @@ fn simulate_life(imgbuf: image::RgbImage, config: &Configuration) {
                 }
                 false => {
                     if cell_state.neighborhood == 3.0 {
-                        *pixel = cell_state.neighborhood_color.as_rgb8();
+                        *pixel = cell_state
+                            .neighborhood_color
+                            .clamp(config.clamp_min, config.clamp_max)
+                            .as_rgb8();
                     }
                 }
             }
@@ -288,7 +330,13 @@ fn gather_cell_state(
                 Some(neighbor_pixel) => {
                     let neighbor = Pixel::from_rgb8(neighbor_pixel);
                     let neighbor_similarity = match current_pixel.normalize() {
-                        Pixel::BLACK => Pixel::WHITE.normalize().dot(&neighbor.normalize()),
+                        Pixel::BLACK => {
+                            if neighbor == Pixel::BLACK {
+                                0.0
+                            } else {
+                                1.0
+                            }
+                        }
                         _ => current_pixel.normalize().dot(&neighbor.normalize()),
                     };
                     cell_state.neighborhood += neighbor_similarity;
@@ -317,6 +365,10 @@ mod tests {
 
             generations: 3,
 
+            clamp_min: 0.0,
+            clamp_max: 1.0,
+            threshold: 0.0,
+
             input_path: None,
             output_path: "output/".to_string(),
         }
@@ -330,9 +382,9 @@ mod tests {
     fn buf1() -> image::RgbImage {
         let mut buf = empty_buf();
 
-        buf.put_pixel(0, 0, Pixel::WHITE.as_rgb8());
-        buf.put_pixel(1, 0, Pixel::WHITE.as_rgb8());
-        buf.put_pixel(2, 2, Pixel::WHITE.as_rgb8());
+        buf.put_pixel(0, 0, Pixel::_WHITE.as_rgb8());
+        buf.put_pixel(1, 0, Pixel::_WHITE.as_rgb8());
+        buf.put_pixel(2, 2, Pixel::_WHITE.as_rgb8());
 
         buf
     }
@@ -340,7 +392,7 @@ mod tests {
     #[test]
     fn normalize() {
         assert_eq!(Pixel::_RED.normalize().length(), 1.0);
-        assert_eq!(Pixel::WHITE.normalize().length(), 1.0);
+        assert_eq!(Pixel::_WHITE.normalize().length(), 1.0);
     }
 
     #[test]
@@ -350,7 +402,7 @@ mod tests {
         assert_eq!(Pixel::_RED.normalize().dot(&Pixel::_BLUE.normalize()), 0.0);
 
         let close_enough =
-            (Pixel::WHITE.normalize().dot(&Pixel::WHITE.normalize()) - 1.0).abs() <= 0.0001;
+            (Pixel::_WHITE.normalize().dot(&Pixel::_WHITE.normalize()) - 1.0).abs() <= 0.0001;
         assert_eq!(close_enough, true);
     }
 
@@ -365,7 +417,7 @@ mod tests {
             CellState {
                 alive: false,
                 neighborhood: 3.0,
-                neighborhood_color: Pixel::WHITE,
+                neighborhood_color: Pixel::_WHITE,
             }
         );
     }
