@@ -3,6 +3,12 @@ name = "game_of_colors"
 version = "0.1.0"
 edition = "2021"
 
+license = "MIT OR Apache-2.0"
+description = "Command line game of life ... but colorful"
+repository = "https://github.com/amitmaish/game_of_colors"
+
+readme = "README.md"
+
 [dependencies]
 image = "0.25.5"
 rand = "0.8.5"
