@@ -1,8 +1,7 @@
 use image;
+use image::Rgb;
 use rand;
 use std::env;
-use std::ops::AddAssign;
-use std::ops::Div;
 use std::path::Path;
 
 struct Configuration<'a> {
@@ -11,145 +10,88 @@ struct Configuration<'a> {
 
     generations: u32,
 
-    clamp_min: f64,
-    clamp_max: f64,
-    threshold: f64,
+    clamp_min: f32,
+    clamp_max: f32,
+    threshold: f32,
 
     input_path: Option<&'a Path>,
     output_path: String,
 }
 
-#[derive(PartialEq, Debug)]
-struct Pixel {
-    r: f64,
-    g: f64,
-    b: f64,
+const BLACK: Rgb<f32> = Rgb::<f32>([0.0; 3]);
+
+trait Pixel {
+    fn new(r: f32, g: f32, b: f32) -> Self;
+    fn length(&self) -> f32;
+    fn threshold(&self, threshold: f32) -> Self;
+    fn clamp(&self, min: f32, max: f32) -> Self;
+    fn normalize(&self) -> Self;
+    fn dot(&self, v: &Self) -> f32;
+    fn rand() -> Self;
 }
 
-impl Pixel {
-    fn new(r: f64, g: f64, b: f64) -> Self {
-        Self { r, g, b }
+impl Pixel for Rgb<f32> {
+    fn new(r: f32, g: f32, b: f32) -> Self {
+        Rgb::<f32>([r, g, b])
     }
 
-    fn from_rgb8(pixel: &image::Rgb<u8>) -> Self {
-        Self {
-            r: pixel[0] as f64 / u8::MAX as f64,
-            g: pixel[1] as f64 / u8::MAX as f64,
-            b: pixel[2] as f64 / u8::MAX as f64,
-        }
-    }
-
-    fn as_rgb8(&self) -> image::Rgb<u8> {
-        image::Rgb([
-            (self.r * (u8::MAX as f64)) as u8,
-            (self.g * (u8::MAX as f64)) as u8,
-            (self.b * (u8::MAX as f64)) as u8,
-        ])
-    }
-
-    fn threshold(&self, threshold: f64) -> Pixel {
+    fn threshold(&self, threshold: f32) -> image::Rgb<f32> {
         if self.length() >= threshold {
-            Pixel::new(self.r, self.g, self.b)
+            self.clone()
         } else {
-            Pixel::BLACK
+            BLACK
         }
     }
 
-    fn clamp(&self, min: f64, max: f64) -> Pixel {
-        Pixel {
-            r: self.r.clamp(min, max),
-            g: self.g.clamp(min, max),
-            b: self.b.clamp(min, max),
-        }
-    }
-
-    fn length(&self) -> f64 {
-        let squared_length = (self.r * self.r) + (self.g * self.g) + (self.b * self.b);
+    fn length(&self) -> f32 {
+        let squared_length = (self[0] * self[0]) + (self[1] * self[1]) + (self[2] * self[2]);
         squared_length.sqrt()
     }
 
-    fn normalize(&self) -> Pixel {
+    fn clamp(&self, min: f32, max: f32) -> image::Rgb<f32> {
+        Rgb::<f32>([
+            self[0].clamp(min, max),
+            self[1].clamp(min, max),
+            self[2].clamp(min, max),
+        ])
+    }
+
+    fn normalize(&self) -> Self {
         match self.length() {
-            0.0 => Pixel::BLACK,
-            _ => Pixel {
-                r: self.r / self.length(),
-                g: self.g / self.length(),
-                b: self.b / self.length(),
-            },
+            0.0 => BLACK,
+            _ => image::Rgb::<f32>([
+                self[0] / self.length(),
+                self[0] / self.length(),
+                self[0] / self.length(),
+            ]),
         }
     }
 
-    fn dot(&self, v: &Pixel) -> f64 {
+    fn dot(&self, v: &Self) -> f32 {
         let u = self;
-        (u.r * v.r) + (u.g * v.g) + (u.b * v.b)
+        (u[0] * v[0]) + (u[1] * v[1]) + (u[2] * v[2])
     }
 
-    fn rand() -> Pixel {
-        Pixel {
-            r: rand::random::<f64>(),
-            g: rand::random::<f64>(),
-            b: rand::random::<f64>(),
-        }
-    }
-
-    const _WHITE: Pixel = Pixel {
-        r: 1.0,
-        g: 1.0,
-        b: 1.0,
-    };
-
-    const _RED: Pixel = Pixel {
-        r: 1.0,
-        g: 0.0,
-        b: 0.0,
-    };
-
-    const _GREEN: Pixel = Pixel {
-        r: 0.0,
-        g: 1.0,
-        b: 0.0,
-    };
-
-    const _BLUE: Pixel = Pixel {
-        r: 0.0,
-        g: 0.0,
-        b: 1.0,
-    };
-
-    const BLACK: Pixel = Pixel {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-    };
-}
-
-impl AddAssign for Pixel {
-    fn add_assign(&mut self, other: Pixel) {
-        *self = Self {
-            r: self.r + other.r,
-            g: self.g + other.g,
-            b: self.b + other.b,
-        }
+    fn rand() -> Self {
+        image::Rgb([
+            rand::random::<f32>(),
+            rand::random::<f32>(),
+            rand::random::<f32>(),
+        ])
     }
 }
 
-impl Div<f64> for Pixel {
-    type Output = Self;
-
-    fn div(self, x: f64) -> Self::Output {
-        Self {
-            r: self.r / x,
-            g: self.g / x,
-            b: self.b / x,
-        }
+    fn add_pixel(lhs: &mut Rgb<f32>, rhs: Rgb<f32>) {
+        lhs[0] += rhs[0];
+        lhs[1] += rhs[1];
+        lhs[2] += rhs[2];
     }
-}
 
 #[derive(PartialEq, Debug)]
 struct CellState {
     alive: bool,
-    neighborhood: f64,
-    neighborhood_color: Pixel,
+    neighborhood: f32,
+    neighborhood_color: Rgb<f32>,
 }
 
 impl CellState {
@@ -224,39 +166,39 @@ fn main() {
     let imgbuf = match config.input_path {
         None => generate_random_gen(&config),
         Some(input_path) => {
-            let mut buf = image::ImageReader::open(input_path)
+            let buf = image::ImageReader::open(input_path)
                 .unwrap()
                 .decode()
-                .unwrap()
-                .into_rgb8();
+                .unwrap();
+            let mut buf = buf.into_rgb32f();
             for (_x, _y, pixel) in buf.enumerate_pixels_mut() {
-                *pixel = Pixel::from_rgb8(pixel)
+                *pixel = pixel
                     .threshold(config.threshold)
                     .clamp(config.clamp_min, config.clamp_max)
-                    .as_rgb8();
             }
 
             config.imgx = buf.width();
             config.imgy = buf.height();
 
-            buf
+            image::DynamicImage::ImageRgb32F(buf)
         }
     };
 
     // write inital generation
     imgbuf
+        .to_rgb8()
         .save(format!("{}0000.png", config.output_path))
         .unwrap();
 
     simulate_life(imgbuf, &config);
 }
 
-fn generate_random_gen(config: &Configuration) -> image::RgbImage {
-    let mut imgbuf = image::RgbImage::new(config.imgx, config.imgy);
+fn generate_random_gen(config: &Configuration) -> image::DynamicImage {
+    let mut imgbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
-    for (_, _, pixel) in imgbuf.enumerate_pixels_mut() {
+    for (_, _, pixel) in imgbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
         match rand::random() {
-            true => *pixel = Pixel::rand().as_rgb8(),
+            true => *pixel = Rgb::<f32>::rand(),
             false => (),
         }
     }
@@ -264,34 +206,34 @@ fn generate_random_gen(config: &Configuration) -> image::RgbImage {
     imgbuf
 }
 
-fn simulate_life(imgbuf: image::RgbImage, config: &Configuration) {
+fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
     let mut lastgen = imgbuf;
 
     for i in 1..config.generations {
-        let mut genbuf = image::RgbImage::new(config.imgx, config.imgy);
+        let mut genbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
         // insert game of life logic here
-        for (x, y, pixel) in genbuf.enumerate_pixels_mut() {
-            let cell_state = gather_cell_state(&Pixel::from_rgb8(pixel), &lastgen, x, y);
+        for (x, y, pixel) in genbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
+            let cell_state = gather_cell_state(&pixel, &lastgen, x, y);
 
             match cell_state.alive {
                 true => {
                     if (cell_state.neighborhood >= 2.0) && (cell_state.neighborhood <= 3.0) {
-                        *pixel = Pixel::from_rgb8(lastgen.get_pixel(x, y)).as_rgb8();
+                        *pixel = lastgen.as_rgb32f().unwrap().get_pixel(x, y).clone();
                     }
                 }
                 false => {
                     if cell_state.neighborhood == 3.0 {
                         *pixel = cell_state
                             .neighborhood_color
-                            .clamp(config.clamp_min, config.clamp_max)
-                            .as_rgb8();
+                            .clamp(config.clamp_min, config.clamp_max);
                     }
                 }
             }
         }
 
         genbuf
+            .to_rgb8()
             .save(format!("{}{:04}.png", config.output_path, i))
             .unwrap();
 
@@ -300,18 +242,18 @@ fn simulate_life(imgbuf: image::RgbImage, config: &Configuration) {
 }
 
 fn gather_cell_state(
-    current_pixel: &Pixel,
-    lastgen: &image::RgbImage,
+    current_pixel: &Rgb<f32>,
+    lastgen: &image::DynamicImage,
     x: u32,
     y: u32,
 ) -> CellState {
     let mut cell_state = CellState::new();
 
     // check living status
-    match lastgen.get_pixel_checked(x, y) {
+    match lastgen.as_rgb32f().unwrap().get_pixel_checked(x, y) {
         None => (),
         Some(pixel) => {
-            if Pixel::from_rgb8(pixel).length() > 0.25 {
+            if pixel.length() > 0.25 {
                 cell_state.alive = true
             }
         }
@@ -324,14 +266,16 @@ fn gather_cell_state(
                 continue;
             }
             match lastgen
+                .as_rgb32f()
+                .unwrap()
                 .get_pixel_checked((x as i32 + x_offset) as u32, (y as i32 + y_offset) as u32)
             {
                 None => (),
                 Some(neighbor_pixel) => {
-                    let neighbor = Pixel::from_rgb8(neighbor_pixel);
+                    let neighbor = neighbor_pixel;
                     let neighbor_similarity = match current_pixel.normalize() {
-                        Pixel::BLACK => {
-                            if neighbor == Pixel::BLACK {
+                        BLACK => {
+                            if *neighbor == BLACK {
                                 0.0
                             } else {
                                 1.0
@@ -341,7 +285,7 @@ fn gather_cell_state(
                     };
                     cell_state.neighborhood += neighbor_similarity;
                     if neighbor_similarity >= 0.25 {
-                        cell_state.neighborhood_color += neighbor;
+                        add_pixel(&mut cell_state.neighborhood_color, *neighbor);
                     }
                 }
             }
@@ -349,76 +293,12 @@ fn gather_cell_state(
     }
 
     cell_state.neighborhood = (cell_state.neighborhood * 10000.0).round() / 10000.0;
-    cell_state.neighborhood_color = cell_state.neighborhood_color / cell_state.neighborhood;
+    cell_state.neighborhood_color = Rgb::<f32>([
+        cell_state.neighborhood_color[0] / cell_state.neighborhood, 
+        cell_state.neighborhood_color[1] / cell_state.neighborhood, 
+        cell_state.neighborhood_color[2] / cell_state.neighborhood
+    ]);
 
     cell_state
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_config() -> Configuration<'static> {
-        Configuration {
-            imgx: 3,
-            imgy: 3,
-
-            generations: 3,
-
-            clamp_min: 0.0,
-            clamp_max: 1.0,
-            threshold: 0.0,
-
-            input_path: None,
-            output_path: "output/".to_string(),
-        }
-    }
-
-    fn empty_buf() -> image::RgbImage {
-        let config = test_config();
-        image::RgbImage::new(config.imgx, config.imgy)
-    }
-
-    fn buf1() -> image::RgbImage {
-        let mut buf = empty_buf();
-
-        buf.put_pixel(0, 0, Pixel::_WHITE.as_rgb8());
-        buf.put_pixel(1, 0, Pixel::_WHITE.as_rgb8());
-        buf.put_pixel(2, 2, Pixel::_WHITE.as_rgb8());
-
-        buf
-    }
-
-    #[test]
-    fn normalize() {
-        assert_eq!(Pixel::_RED.normalize().length(), 1.0);
-        assert_eq!(Pixel::_WHITE.normalize().length(), 1.0);
-    }
-
-    #[test]
-    fn dot_product() {
-        assert_eq!(Pixel::_RED.normalize().dot(&Pixel::_RED.normalize()), 1.0);
-
-        assert_eq!(Pixel::_RED.normalize().dot(&Pixel::_BLUE.normalize()), 0.0);
-
-        let close_enough =
-            (Pixel::_WHITE.normalize().dot(&Pixel::_WHITE.normalize()) - 1.0).abs() <= 0.0001;
-        assert_eq!(close_enough, true);
-    }
-
-    #[test]
-    fn cell_state_test() {
-        let buf1 = buf1();
-
-        let state1 = gather_cell_state(&Pixel::from_rgb8(buf1.get_pixel(1, 1)), &buf1, 1, 1);
-
-        assert_eq!(
-            state1,
-            CellState {
-                alive: false,
-                neighborhood: 3.0,
-                neighborhood_color: Pixel::_WHITE,
-            }
-        );
-    }
-}
