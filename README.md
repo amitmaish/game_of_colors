@@ -8,8 +8,8 @@ game_of_colors -i {input image} -o {output directory}
 
 optionally you can add:
 * -g u32 to determine the number of generations it will simulate
-* -threshold f64 to set all pixels in the input below the threshold to black
-* -clamp_min f64 or -clamp_max f64 to clamp the input image
+* -threshold f32 to set all pixels in the input below the threshold to black
+* -clamp_min f32 or -clamp_max f32 to clamp the input image
 
 when run without an input image the program will generate noise as a starting point. the dimentions of the image can be set with:
 * -x u32
