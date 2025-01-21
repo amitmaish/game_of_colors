@@ -2,7 +2,14 @@ use image;
 use image::Rgb;
 use rand;
 use std::env;
+use std::io::{Cursor, Read};
 use std::path::Path;
+
+#[derive(Debug)]
+enum Input<'a> {
+    Pipe,
+    Path(Option<&'a Path>),
+}
 
 struct Configuration<'a> {
     imgx: u32,
@@ -14,8 +21,8 @@ struct Configuration<'a> {
     clamp_max: f32,
     threshold: f32,
 
-    input_path: Option<&'a Path>,
-    output_path: String,
+    input: Input<'a>,
+    output: String,
 }
 
 const BLACK: Rgb<f32> = Rgb::<f32>([0.0; 3]);
@@ -81,11 +88,11 @@ impl Pixel for Rgb<f32> {
     }
 }
 
-    fn add_pixel(lhs: &mut Rgb<f32>, rhs: Rgb<f32>) {
-        lhs[0] += rhs[0];
-        lhs[1] += rhs[1];
-        lhs[2] += rhs[2];
-    }
+fn add_pixel(lhs: &mut Rgb<f32>, rhs: Rgb<f32>) {
+    lhs[0] += rhs[0];
+    lhs[1] += rhs[1];
+    lhs[2] += rhs[2];
+}
 
 #[derive(PartialEq, Debug)]
 struct CellState {
@@ -105,15 +112,17 @@ impl CellState {
 }
 
 fn main() {
+    eprintln!("\ngame_of_colors\n");
+
     let mut config = Configuration {
         imgx: 100,
         imgy: 100,
         generations: 100,
-        input_path: None,
+        input: Input::Path(None),
         clamp_min: 0.0,
         clamp_max: 1.0,
         threshold: 0.0,
-        output_path: String::from("output/"),
+        output: String::from("output/"),
     }; // Set the default configuration
 
     let mut args = env::args();
@@ -125,10 +134,10 @@ fn main() {
     while let Some(arg) = args.next() {
         match arg.trim() {
             "-i" => {
-                input_path_arg = Some(args.next().unwrap());
+                input_path_arg = Some(String::from(args.next().unwrap().trim()));
             }
             "-o" => {
-                config.output_path = String::from(args.next().unwrap().trim());
+                config.output = String::from(args.next().unwrap().trim());
             }
             "-x" => {
                 config.imgx = String::from(args.next().unwrap().trim()).parse().unwrap();
@@ -148,46 +157,66 @@ fn main() {
             "-threshold" => {
                 config.threshold = String::from(args.next().unwrap().trim()).parse().unwrap();
             }
+            "-pipe" => {
+                config.input = Input::Pipe;
+            }
 
             _ => panic!("Couldn't parse input"),
         }
     }
 
     let input_path;
-
     match input_path_arg {
-        None => config.input_path = None,
+        None => (),
         Some(path) => {
             input_path = path;
-            config.input_path = Some(Path::new(&input_path));
+            config.input = Input::Path(Some(Path::new(&input_path)));
         }
     }
 
-    let imgbuf = match config.input_path {
-        None => generate_random_gen(&config),
-        Some(input_path) => {
-            let buf = image::ImageReader::open(input_path)
+    let imgbuf = match config.input {
+        Input::Pipe => {
+            let mut buf: Vec<u8> = Vec::new();
+            let stdin = std::io::stdin();
+            let mut handle = stdin.lock();
+
+            match handle.read_to_end(&mut buf) {
+                Result::Err(_x) => (),
+                Result::Ok(x) => {
+                    eprintln!("read {} bytes", x)
+                }
+            };
+
+            let buf = Cursor::new(buf);
+
+            let img = image::ImageReader::new(buf)
+                .with_guessed_format()
                 .unwrap()
                 .decode()
-                .unwrap();
-            let mut buf = buf.into_rgb32f();
-            for (_x, _y, pixel) in buf.enumerate_pixels_mut() {
-                *pixel = pixel
-                    .threshold(config.threshold)
-                    .clamp(config.clamp_min, config.clamp_max)
-            }
+                .unwrap().to_luma32f();
+            let img = image::DynamicImage::from(img);
 
-            config.imgx = buf.width();
-            config.imgy = buf.height();
-
-            image::DynamicImage::ImageRgb32F(buf)
+            eprintln!("image dimensions {:?}", (img.width(), img.height()));
+            config.imgx = img.width();
+            config.imgy = img.height();
+            
+            img
+    
         }
+        Input::Path(None) => generate_random_gen(&config),
+        Input::Path(Some(path)) => image::ImageReader::open(path).unwrap().decode().unwrap(),
     };
+
+    for (_x, _y, pixel) in imgbuf.to_rgb32f().enumerate_pixels_mut() {
+        pixel
+            .threshold(config.threshold)
+            .clamp(config.clamp_min, config.clamp_max);
+    }
 
     // write inital generation
     imgbuf
         .to_rgb8()
-        .save(format!("{}0000.png", config.output_path))
+        .save(format!("{}0000.png", config.output))
         .unwrap();
 
     simulate_life(imgbuf, &config);
@@ -210,6 +239,7 @@ fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
     let mut lastgen = imgbuf;
 
     for i in 1..config.generations {
+        eprintln!("simulating gen {}", i);
         let mut genbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
         // insert game of life logic here
@@ -219,7 +249,7 @@ fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
             match cell_state.alive {
                 true => {
                     if (cell_state.neighborhood >= 2.0) && (cell_state.neighborhood <= 3.0) {
-                        *pixel = lastgen.as_rgb32f().unwrap().get_pixel(x, y).clone();
+                        *pixel = lastgen.to_rgb32f().get_pixel(x, y).clone();
                     }
                 }
                 false => {
@@ -234,7 +264,7 @@ fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
 
         genbuf
             .to_rgb8()
-            .save(format!("{}{:04}.png", config.output_path, i))
+            .save(format!("{}{:04}.png", config.output, i))
             .unwrap();
 
         lastgen = genbuf;
@@ -250,7 +280,7 @@ fn gather_cell_state(
     let mut cell_state = CellState::new();
 
     // check living status
-    match lastgen.as_rgb32f().unwrap().get_pixel_checked(x, y) {
+    match lastgen.to_rgb32f().get_pixel_checked(x, y) {
         None => (),
         Some(pixel) => {
             if pixel.length() > 0.25 {
@@ -266,8 +296,7 @@ fn gather_cell_state(
                 continue;
             }
             match lastgen
-                .as_rgb32f()
-                .unwrap()
+                .to_rgb32f()
                 .get_pixel_checked((x as i32 + x_offset) as u32, (y as i32 + y_offset) as u32)
             {
                 None => (),
@@ -294,11 +323,10 @@ fn gather_cell_state(
 
     cell_state.neighborhood = (cell_state.neighborhood * 10000.0).round() / 10000.0;
     cell_state.neighborhood_color = Rgb::<f32>([
-        cell_state.neighborhood_color[0] / cell_state.neighborhood, 
-        cell_state.neighborhood_color[1] / cell_state.neighborhood, 
-        cell_state.neighborhood_color[2] / cell_state.neighborhood
+        cell_state.neighborhood_color[0] / cell_state.neighborhood,
+        cell_state.neighborhood_color[1] / cell_state.neighborhood,
+        cell_state.neighborhood_color[2] / cell_state.neighborhood,
     ]);
 
     cell_state
 }
-

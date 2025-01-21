@@ -6,6 +6,8 @@ a command line implementation of conways game of life where the algorithm was ex
 game_of_colors -i {input image} -o {output directory}
 ```
 
+instead of selecting the input with -i, you can instead pass -pipe, telling the program to read raw binary data from the standard input.
+
 optionally you can add:
 * -g u32 to determine the number of generations it will simulate
 * -threshold f32 to set all pixels in the input below the threshold to black

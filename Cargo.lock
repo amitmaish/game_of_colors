@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "game_of_colors"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "image",
  "rand",
