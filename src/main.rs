@@ -174,7 +174,7 @@ fn main() {
         }
     }
 
-    let imgbuf = match config.input {
+    let mut imgbuf = match config.input {
         Input::Pipe => {
             let mut buf: Vec<u8> = Vec::new();
             let stdin = std::io::stdin();
@@ -189,25 +189,25 @@ fn main() {
 
             let buf = Cursor::new(buf);
 
-            let img = image::ImageReader::new(buf)
+            let imgbuf = image::ImageReader::new(buf)
                 .with_guessed_format()
                 .unwrap()
                 .decode()
-                .unwrap().to_luma32f();
-            let img = image::DynamicImage::from(img);
+                .unwrap()
+                .to_rgb32f();
+            let imgbuf = image::DynamicImage::from(imgbuf);
 
-            eprintln!("image dimensions {:?}", (img.width(), img.height()));
-            config.imgx = img.width();
-            config.imgy = img.height();
-            
-            img
-    
+            eprintln!("image dimensions {:?}", (imgbuf.width(), imgbuf.height()));
+            config.imgx = imgbuf.width();
+            config.imgy = imgbuf.height();
+
+            imgbuf
         }
         Input::Path(None) => generate_random_gen(&config),
         Input::Path(Some(path)) => image::ImageReader::open(path).unwrap().decode().unwrap(),
     };
 
-    for (_x, _y, pixel) in imgbuf.to_rgb32f().enumerate_pixels_mut() {
+    for (_x, _y, pixel) in imgbuf.as_mut_rgb32f().expect("all internal images are rgb32f").enumerate_pixels_mut() {
         pixel
             .threshold(config.threshold)
             .clamp(config.clamp_min, config.clamp_max);
@@ -226,9 +226,8 @@ fn generate_random_gen(config: &Configuration) -> image::DynamicImage {
     let mut imgbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
     for (_, _, pixel) in imgbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
-        match rand::random() {
-            true => *pixel = Rgb::<f32>::rand(),
-            false => (),
+        if rand::random::<bool>() {
+            *pixel = Rgb::<f32>::rand()
         }
     }
 
@@ -244,12 +243,12 @@ fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
 
         // insert game of life logic here
         for (x, y, pixel) in genbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
-            let cell_state = gather_cell_state(&pixel, &lastgen, x, y);
+            let cell_state = gather_cell_state(pixel, &lastgen, x, y);
 
             match cell_state.alive {
                 true => {
                     if (cell_state.neighborhood >= 2.0) && (cell_state.neighborhood <= 3.0) {
-                        *pixel = lastgen.to_rgb32f().get_pixel(x, y).clone();
+                        *pixel = *lastgen.as_rgb32f().unwrap().get_pixel(x, y);
                     }
                 }
                 false => {
@@ -280,7 +279,7 @@ fn gather_cell_state(
     let mut cell_state = CellState::new();
 
     // check living status
-    match lastgen.to_rgb32f().get_pixel_checked(x, y) {
+    match lastgen.as_rgb32f().unwrap().get_pixel_checked(x, y) {
         None => (),
         Some(pixel) => {
             if pixel.length() > 0.25 {
@@ -296,7 +295,8 @@ fn gather_cell_state(
                 continue;
             }
             match lastgen
-                .to_rgb32f()
+                .as_rgb32f()
+                .unwrap()
                 .get_pixel_checked((x as i32 + x_offset) as u32, (y as i32 + y_offset) as u32)
             {
                 None => (),
