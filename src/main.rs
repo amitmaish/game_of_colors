@@ -9,8 +9,10 @@ use std::{
 // use crossterm::event::{self, Event};
 use ratatui::{
     backend::CrosstermBackend,
+    layout::Rect,
     style::{Style, Stylize},
     symbols,
+    text::Text,
     widgets::LineGauge,
     Frame, TerminalOptions, Viewport,
 };
@@ -118,7 +120,7 @@ impl CellState {
 }
 
 fn main() {
-    eprintln!("\ngame_of_colors\n");
+    // eprintln!("\ngame_of_colors\n");
 
     let mut config = Configuration {
         imgx: 100,
@@ -230,6 +232,8 @@ fn main() {
         .unwrap();
 
     simulate_life(imgbuf, &config);
+
+    ratatui::restore();
 }
 
 fn generate_random_gen(config: &Configuration) -> DynamicImage {
@@ -250,11 +254,24 @@ struct ProgressBar {
 
 impl ProgressBar {
     fn draw(&self, frame: &mut Frame) {
+        let text = Text::raw("game of colors");
         let progress = LineGauge::default()
             .filled_style(Style::new().light_green().bold())
             .line_set(symbols::line::NORMAL)
             .ratio(self.ratio);
-        frame.render_widget(progress, frame.area());
+        frame.render_widget(
+            text,
+            Rect::new(frame.area().x, frame.area().y, frame.area().width, 1),
+        );
+        frame.render_widget(
+            progress,
+            Rect::new(
+                frame.area().x,
+                frame.area().y + 1,
+                100.min(frame.area().width),
+                1,
+            ),
+        );
     }
 }
 
@@ -263,7 +280,7 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
     let mut terminal = ratatui::Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline(1),
+            viewport: Viewport::Inline(3),
         },
     )
     .expect("couldn't access terminal");
@@ -272,11 +289,13 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
 
     let mut lastgen = imgbuf;
 
-    for i in 1..config.generations {
+    for i in 1..=config.generations {
         progress.ratio = i as f64 / config.generations as f64;
-        terminal
-            .draw(|frame: &mut Frame| progress.draw(frame))
-            .expect("couldn't draw frame");
+        match terminal.draw(|frame: &mut Frame| progress.draw(frame)) {
+            Ok(_) => (),
+            Err(err) => eprintln!("{}", err),
+        }
+
         let mut genbuf = DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
         // insert game of life logic here
@@ -306,8 +325,6 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
 
         lastgen = genbuf;
     }
-
-    ratatui::restore();
 }
 
 fn gather_cell_state(
