@@ -206,21 +206,28 @@ fn main() {
             let imgbuf = DynamicImage::from(imgbuf);
 
             eprintln!("image dimensions {:?}", (imgbuf.width(), imgbuf.height()));
-            config.imgx = imgbuf.width();
-            config.imgy = imgbuf.height();
 
             imgbuf
         }
         Input::Path(None) => generate_random_gen(&config),
-        Input::Path(Some(path)) => ImageReader::open(path).unwrap().decode().unwrap(),
+        Input::Path(Some(path)) => DynamicImage::from(
+            ImageReader::open(path)
+                .unwrap()
+                .decode()
+                .unwrap()
+                .to_rgb32f(),
+        ),
     };
+
+    config.imgx = imgbuf.width();
+    config.imgy = imgbuf.height();
 
     for (_x, _y, pixel) in imgbuf
         .as_mut_rgb32f()
         .expect("all internal images are rgb32f")
         .enumerate_pixels_mut()
     {
-        pixel
+        *pixel = pixel
             .threshold(config.threshold)
             .clamp(config.clamp_min, config.clamp_max);
     }
