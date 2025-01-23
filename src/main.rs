@@ -6,9 +6,6 @@ use std::{
     path::Path,
 };
 
-use crossterm::event::{self, Event};
-use ratatui::{text::Text, Frame};
-
 #[derive(Debug)]
 enum Input<'a> {
     Pipe,
@@ -111,16 +108,7 @@ impl CellState {
     }
 }
 
-fn draw(frame: &mut Frame) {
-    let text = Text::raw("Hello World!");
-    frame.render_widget(text, frame.area());
-}
-
 fn main() {
-    let mut terminal = ratatui::init();
-    terminal.draw(draw).expect("failed to draw frame");
-    
-
     eprintln!("\ngame_of_colors\n");
 
     let mut config = Configuration {
@@ -233,9 +221,6 @@ fn main() {
         .unwrap();
 
     simulate_life(imgbuf, &config);
-
-    
-    ratatui::restore();
 }
 
 fn generate_random_gen(config: &Configuration) -> DynamicImage {
