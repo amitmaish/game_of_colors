@@ -11,5 +11,7 @@ repository = "https://github.com/amitmaish/game_of_colors"
 readme = "README.md"
 
 [dependencies]
+crossterm = "0.28.1"
 image = "0.25.5"
 rand = "0.8.5"
+ratatui = "0.29.0"

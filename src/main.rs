@@ -2,8 +2,17 @@ use image::{self, DynamicImage, ImageReader, Rgb};
 use rand::random;
 use std::{
     env,
-    io::{Cursor, Read},
+    io::{stdout, Cursor, Read},
     path::Path,
+};
+
+// use crossterm::event::{self, Event};
+use ratatui::{
+    backend::CrosstermBackend,
+    style::{Style, Stylize},
+    symbols,
+    widgets::LineGauge,
+    Frame, TerminalOptions, Viewport,
 };
 
 #[derive(Debug)]
@@ -235,11 +244,39 @@ fn generate_random_gen(config: &Configuration) -> DynamicImage {
     imgbuf
 }
 
+struct ProgressBar {
+    ratio: f64,
+}
+
+impl ProgressBar {
+    fn draw(&self, frame: &mut Frame) {
+        let progress = LineGauge::default()
+            .filled_style(Style::new().light_green().bold())
+            .line_set(symbols::line::NORMAL)
+            .ratio(self.ratio);
+        frame.render_widget(progress, frame.area());
+    }
+}
+
 fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = ratatui::Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(1),
+        },
+    )
+    .expect("couldn't access terminal");
+
+    let mut progress = ProgressBar { ratio: 0.0 };
+
     let mut lastgen = imgbuf;
 
     for i in 1..config.generations {
-        eprintln!("simulating gen {}", i);
+        progress.ratio = i as f64 / config.generations as f64;
+        terminal
+            .draw(|frame: &mut Frame| progress.draw(frame))
+            .expect("couldn't draw frame");
         let mut genbuf = DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
         // insert game of life logic here
@@ -269,6 +306,8 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
 
         lastgen = genbuf;
     }
+
+    ratatui::restore();
 }
 
 fn gather_cell_state(
