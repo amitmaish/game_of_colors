@@ -1,9 +1,13 @@
-use image;
-use image::Rgb;
-use rand;
-use std::env;
-use std::io::{Cursor, Read};
-use std::path::Path;
+use image::{self, DynamicImage, ImageReader, Rgb};
+use rand::random;
+use std::{
+    env,
+    io::{Cursor, Read},
+    path::Path,
+};
+
+use crossterm::event::{self, Event};
+use ratatui::{text::Text, Frame};
 
 #[derive(Debug)]
 enum Input<'a> {
@@ -42,9 +46,9 @@ impl Pixel for Rgb<f32> {
         Rgb::<f32>([r, g, b])
     }
 
-    fn threshold(&self, threshold: f32) -> image::Rgb<f32> {
+    fn threshold(&self, threshold: f32) -> Rgb<f32> {
         if self.length() >= threshold {
-            self.clone()
+            *self
         } else {
             BLACK
         }
@@ -66,7 +70,7 @@ impl Pixel for Rgb<f32> {
     fn normalize(&self) -> Self {
         match self.length() {
             0.0 => BLACK,
-            _ => image::Rgb::<f32>([
+            _ => Rgb::<f32>([
                 self[0] / self.length(),
                 self[0] / self.length(),
                 self[0] / self.length(),
@@ -80,11 +84,7 @@ impl Pixel for Rgb<f32> {
     }
 
     fn rand() -> Self {
-        image::Rgb([
-            rand::random::<f32>(),
-            rand::random::<f32>(),
-            rand::random::<f32>(),
-        ])
+        image::Rgb([random::<f32>(), random::<f32>(), random::<f32>()])
     }
 }
 
@@ -111,7 +111,16 @@ impl CellState {
     }
 }
 
+fn draw(frame: &mut Frame) {
+    let text = Text::raw("Hello World!");
+    frame.render_widget(text, frame.area());
+}
+
 fn main() {
+    let mut terminal = ratatui::init();
+    terminal.draw(draw).expect("failed to draw frame");
+    
+
     eprintln!("\ngame_of_colors\n");
 
     let mut config = Configuration {
@@ -189,13 +198,13 @@ fn main() {
 
             let buf = Cursor::new(buf);
 
-            let imgbuf = image::ImageReader::new(buf)
+            let imgbuf = ImageReader::new(buf)
                 .with_guessed_format()
                 .unwrap()
                 .decode()
                 .unwrap()
                 .to_rgb32f();
-            let imgbuf = image::DynamicImage::from(imgbuf);
+            let imgbuf = DynamicImage::from(imgbuf);
 
             eprintln!("image dimensions {:?}", (imgbuf.width(), imgbuf.height()));
             config.imgx = imgbuf.width();
@@ -204,10 +213,14 @@ fn main() {
             imgbuf
         }
         Input::Path(None) => generate_random_gen(&config),
-        Input::Path(Some(path)) => image::ImageReader::open(path).unwrap().decode().unwrap(),
+        Input::Path(Some(path)) => ImageReader::open(path).unwrap().decode().unwrap(),
     };
 
-    for (_x, _y, pixel) in imgbuf.as_mut_rgb32f().expect("all internal images are rgb32f").enumerate_pixels_mut() {
+    for (_x, _y, pixel) in imgbuf
+        .as_mut_rgb32f()
+        .expect("all internal images are rgb32f")
+        .enumerate_pixels_mut()
+    {
         pixel
             .threshold(config.threshold)
             .clamp(config.clamp_min, config.clamp_max);
@@ -220,13 +233,16 @@ fn main() {
         .unwrap();
 
     simulate_life(imgbuf, &config);
+
+    
+    ratatui::restore();
 }
 
-fn generate_random_gen(config: &Configuration) -> image::DynamicImage {
-    let mut imgbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
+fn generate_random_gen(config: &Configuration) -> DynamicImage {
+    let mut imgbuf = DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
     for (_, _, pixel) in imgbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
-        if rand::random::<bool>() {
+        if random::<bool>() {
             *pixel = Rgb::<f32>::rand()
         }
     }
@@ -234,12 +250,12 @@ fn generate_random_gen(config: &Configuration) -> image::DynamicImage {
     imgbuf
 }
 
-fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
+fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
     let mut lastgen = imgbuf;
 
     for i in 1..config.generations {
         eprintln!("simulating gen {}", i);
-        let mut genbuf = image::DynamicImage::new_rgb32f(config.imgx, config.imgy);
+        let mut genbuf = DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
         // insert game of life logic here
         for (x, y, pixel) in genbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
@@ -272,7 +288,7 @@ fn simulate_life(imgbuf: image::DynamicImage, config: &Configuration) {
 
 fn gather_cell_state(
     current_pixel: &Rgb<f32>,
-    lastgen: &image::DynamicImage,
+    lastgen: &DynamicImage,
     x: u32,
     y: u32,
 ) -> CellState {
