@@ -18,12 +18,14 @@ use ratatui::{
 };
 
 #[derive(Debug)]
-enum Input<'a> {
+enum Input {
+    None,
     Pipe,
-    Path(Option<&'a Path>),
+    File(String),
+    Directory(String),
 }
 
-struct Configuration<'a> {
+struct Configuration {
     imgx: u32,
     imgy: u32,
 
@@ -33,7 +35,7 @@ struct Configuration<'a> {
     clamp_max: f32,
     threshold: f32,
 
-    input: Input<'a>,
+    input: Input,
     output: String,
 }
 
@@ -47,6 +49,7 @@ trait Pixel {
     fn normalize(&self) -> Self;
     fn dot(&self, v: &Self) -> f32;
     fn rand() -> Self;
+    fn add(&self, v: &Self) -> Self;
 }
 
 impl Pixel for Rgb<f32> {
@@ -94,6 +97,15 @@ impl Pixel for Rgb<f32> {
     fn rand() -> Self {
         image::Rgb([random::<f32>(), random::<f32>(), random::<f32>()])
     }
+
+    fn add(&self, v: &Self) -> Self {
+        let u = self;
+        Rgb::<f32>([
+            (u[0] + v[0]).clamp(0.0, 1.0),
+            (u[1] + v[1]).clamp(0.0, 1.0),
+            (u[2] + v[2]).clamp(0.0, 1.0),
+        ])
+    }
 }
 
 fn add_pixel(lhs: &mut Rgb<f32>, rhs: Rgb<f32>) {
@@ -126,7 +138,7 @@ fn main() {
         imgx: 100,
         imgy: 100,
         generations: 100,
-        input: Input::Path(None),
+        input: Input::None,
         clamp_min: 0.0,
         clamp_max: 1.0,
         threshold: 0.0,
@@ -137,12 +149,13 @@ fn main() {
 
     let _ = args.next(); // ignore first item
 
-    let mut input_path_arg: Option<String> = None;
-
     while let Some(arg) = args.next() {
         match arg.trim() {
             "-i" => {
-                input_path_arg = Some(String::from(args.next().unwrap().trim()));
+                config.input = Input::File(String::from(args.next().unwrap().trim()));
+            }
+            "-d" => {
+                config.input = Input::Directory(String::from(args.next().unwrap().trim()));
             }
             "-o" => {
                 config.output = String::from(args.next().unwrap().trim());
@@ -173,15 +186,6 @@ fn main() {
         }
     }
 
-    let input_path;
-    match input_path_arg {
-        None => (),
-        Some(path) => {
-            input_path = path;
-            config.input = Input::Path(Some(Path::new(&input_path)));
-        }
-    }
-
     let mut imgbuf = match config.input {
         Input::Pipe => {
             let mut buf: Vec<u8> = Vec::new();
@@ -209,14 +213,18 @@ fn main() {
 
             imgbuf
         }
-        Input::Path(None) => generate_random_gen(&config),
-        Input::Path(Some(path)) => DynamicImage::from(
-            ImageReader::open(path)
+        Input::None => generate_random_gen(&config),
+        Input::File(ref path) => DynamicImage::from(
+            ImageReader::open(Path::new(&path))
                 .unwrap()
                 .decode()
                 .unwrap()
                 .to_rgb32f(),
         ),
+        Input::Directory(ref path) => {
+            config.generations = std::fs::read_dir(Path::new(path)).unwrap().count() as u32;
+            DynamicImage::from(read_image_from_directory(path, 1).to_rgb32f())
+        }
     };
 
     config.imgx = imgbuf.width();
@@ -241,6 +249,13 @@ fn main() {
     simulate_life(imgbuf, &config);
 
     ratatui::restore();
+}
+
+fn read_image_from_directory(path: &String, i: u32) -> DynamicImage {
+    ImageReader::open(Path::new(format!("{path}{:04}.png", i).as_str()))
+        .unwrap()
+        .decode()
+        .unwrap()
 }
 
 fn generate_random_gen(config: &Configuration) -> DynamicImage {
@@ -305,6 +320,11 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
 
         let mut genbuf = DynamicImage::new_rgb32f(config.imgx, config.imgy);
 
+        let next_frame = match config.input {
+            Input::Directory(ref path) => Some(read_image_from_directory(path, i).to_rgb32f()),
+            _ => None,
+        };
+
         // insert game of life logic here
         for (x, y, pixel) in genbuf.as_mut_rgb32f().unwrap().enumerate_pixels_mut() {
             let cell_state = gather_cell_state(pixel, &lastgen, x, y);
@@ -322,6 +342,10 @@ fn simulate_life(imgbuf: DynamicImage, config: &Configuration) {
                             .clamp(config.clamp_min, config.clamp_max);
                     }
                 }
+            }
+
+            if let Some(ref image) = next_frame {
+                *pixel = pixel.add(image.get_pixel(x, y));
             }
         }
 

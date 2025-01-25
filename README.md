@@ -2,7 +2,7 @@
 
 a command line implementation of conways game of life where the algorithm was extended to work with colors
 
-```
+```sh
 game_of_colors -i {input image} -o {output directory}
 ```
 
